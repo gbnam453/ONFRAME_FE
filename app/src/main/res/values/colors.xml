@@ -1,0 +1,8 @@
+<resources>
+    <color name="brand">#4F46E5</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="onSurface">#121212</color>
+    <color name="onSurfaceVariant">#5F6368</color>
+    <color name="surfaceContainer">#F6F7FB</color>
+    <color name="outline">#E0E3E7</color>
+</resources>

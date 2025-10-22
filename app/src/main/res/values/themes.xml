@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 앱 전역 테마 (한 곳에서만 선언!) -->
+    <style name="Theme.OnFrame" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- 전체화면용: 시스템바 투명 -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+
+        <!-- 다크모드 강제 비활성 (원하면 삭제) -->
+        <item name="android:forceDarkAllowed">false</item>
+
+        <!-- 컷아웃 포함 풀스크린(필요 없으면 삭제) -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>
