@@ -80,18 +80,15 @@ public class MainActivity extends AppCompatActivity {
         pager.setCurrentItem(startIndex, false);
     }
 
-    /** ⛳️ ScreenSettingsFragment에서 호출: 저장된 순서를 다시 읽어와 적용. 현재는 '설정' 탭에 머무르게 한다. */
+    // MainActivity 안에 있는 기존 refreshOrderStayOnSettings()를 이걸로 교체
     public void refreshOrderStayOnSettings() {
-        List<Screen> saved = loadSavedOrderOrDefault();
-        // 현재는 설정 탭에 머무르도록 고정
-        Screen stay = Screen.SETTINGS;
-        order.clear();
-        order.addAll(saved);
-        adapter.setOrder(order);
+        if (pager == null) return;
 
-        int newIndex = order.indexOf(stay);
-        if (newIndex < 0) newIndex = 0;
-        pager.setCurrentItem(newIndex, false);
+        List<Screen> latest = ScreenOrderStore.get(this);
+        pager.setAdapter(new ScreenPagerAdapter(this, latest)); // 생성자 (AppCompatActivity, List<Screen>)
+        int idx = latest.indexOf(Screen.SETTINGS);
+        if (idx < 0) idx = 0;
+        pager.setCurrentItem(idx, false);
     }
 
     /** 외부에서 순서를 직접 주는 경우(예: 프래그먼트가 리스트를 넘겨주는 경우) */

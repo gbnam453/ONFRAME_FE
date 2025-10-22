@@ -1,41 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:orientation="vertical"
-    android:padding="24dp"
+    android:paddingLeft="24dp"
+    android:paddingRight="24dp"
+    android:paddingTop="16dp"
+    android:paddingBottom="16dp"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- 세부화면용 상단 바 -->
+    <!-- 헤더: 뒤로가기 + 타이틀 -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:layout_height="48dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
 
         <ImageButton
             android:id="@+id/btn_back"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="뒤로가기"
-            android:src="@android:drawable/ic_media_previous"/>
+            android:src="@android:drawable/ic_media_previous" />
 
         <TextView
-            android:layout_gravity="center_vertical"
-            android:text="화면 설정"
-            android:textSize="20sp"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"/>
+            android:layout_height="wrap_content"
+            android:text="화면 설정"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:paddingLeft="8dp" />
     </LinearLayout>
 
+    <!-- 정렬 목록 -->
     <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rv_screens"
+        android:id="@+id/rv_order"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"/>
 
+    <!-- 저장 버튼 -->
     <Button
         android:id="@+id/btn_save"
-        android:text="순서 저장"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"/>
+        android:layout_height="wrap_content"
+        android:text="저장"/>
 </LinearLayout>
