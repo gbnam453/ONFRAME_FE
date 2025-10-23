@@ -10,6 +10,7 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.*;
 import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
 import androidx.recyclerview.widget.*;
 
 import com.bumptech.glide.Glide;
@@ -30,9 +31,12 @@ public class AlbumSettingsFragment extends Fragment {
     public View onCreateView(@NonNull LayoutInflater inf, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         View v = inf.inflate(R.layout.fragment_album_settings, container, false);
 
-        // 상단 Back + Title
+        // 공용 헤더 제목
+        ((TextView) v.findViewById(R.id.txt_title)).setText("앨범 설정");
+
+        // 뒤로가기 안전 처리
         ImageButton btnBack = v.findViewById(R.id.btn_back);
-        btnBack.setOnClickListener(v1 -> requireActivity().getSupportFragmentManager().popBackStack());
+        btnBack.setOnClickListener(v1 -> safeNavigateBack());
 
         RecyclerView rv = v.findViewById(R.id.rv_images);
         rv.setLayoutManager(new GridLayoutManager(requireContext(), 3));
@@ -66,7 +70,6 @@ public class AlbumSettingsFragment extends Fragment {
         Button btnAdd = v.findViewById(R.id.btn_add);
         picker = registerForActivityResult(new ActivityResultContracts.OpenMultipleDocuments(), uris -> {
             if (uris == null || uris.isEmpty()) return;
-            // 퍼시스턴트 권한 획득
             for (Uri u : uris) {
                 try {
                     requireContext().getContentResolver().takePersistableUriPermission(
@@ -100,25 +103,35 @@ public class AlbumSettingsFragment extends Fragment {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        if (getActivity() instanceof MainActivity) ((MainActivity) getActivity()).unlockSwipe();
+        // 해제는 SettingsFragment에서 백스택 변화로 처리하므로 여기선 생략 가능
+        // if (getActivity() instanceof MainActivity) ((MainActivity) getActivity()).unlockSwipe();
+    }
+
+    /** 자식 프래그먼트에서 안전하게 '설정'으로 복귀 */
+    private void safeNavigateBack() {
+        if (!isAdded()) return;
+
+        Fragment parent = getParentFragment(); // SettingsFragment 예상
+        if (parent != null) {
+            FragmentManager fm = parent.getChildFragmentManager();
+            if (!fm.isStateSaved() && fm.getBackStackEntryCount() > 0) {
+                fm.popBackStack();
+                return;
+            }
+        }
+        if (getActivity() != null) {
+            getActivity().getOnBackPressedDispatcher().onBackPressed();
+        }
     }
 
     // --- Adapter ---
     static class AlbumImageAdapter extends RecyclerView.Adapter<AlbumImageAdapter.VH> {
-
         interface Listener { void onDelete(int pos); }
         private final List<Uri> data;
         private final Listener listener;
 
-        AlbumImageAdapter(List<Uri> data, Listener l) {
-            this.data = data;
-            this.listener = l;
-            setHasStableIds(true);
-        }
-
-        @Override public long getItemId(int position) {
-            return data.get(position).toString().hashCode();
-        }
+        AlbumImageAdapter(List<Uri> data, Listener l) { this.data = data; this.listener = l; setHasStableIds(true); }
+        @Override public long getItemId(int position) { return data.get(position).toString().hashCode(); }
 
         @NonNull @Override public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_album_image, parent, false);
