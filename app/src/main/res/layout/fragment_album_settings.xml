@@ -2,76 +2,149 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/album_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface">
+    android:paddingLeft="24dp"
+    android:paddingRight="24dp"
+    android:paddingTop="16dp"
+    android:paddingBottom="16dp">
 
-    <!-- 공용 헤더 -->
+    <!-- 공용 상단바 -->
     <include
         android:id="@+id/header"
-        layout="@layout/include_subpage_header"
+        layout="@layout/view_sub_header"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- 이미지 추가 버튼 (컨텐츠 영역 우측 상단) -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btn_add"
-        android:layout_width="wrap_content"
-        android:layout_height="48dp"
-        android:minWidth="120dp"
-        android:text="이미지 추가"
-        android:textAllCaps="false"
-        app:cornerRadius="12dp"
+    <!-- 설정 컨트롤 -->
+    <LinearLayout
+        android:id="@+id/section_controls"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="12dp"
+        android:paddingBottom="8dp"
         app:layout_constraintTop_toBottomOf="@id/header"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp"
-        android:layout_marginEnd="24dp"/>
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
-    <!-- 이미지 그리드 -->
+        <!-- 표시 시간 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp">
+
+            <TextView
+                android:id="@+id/txt_show"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="표시 시간: 5초"
+                android:textSize="16sp"
+                android:textStyle="bold"/>
+
+            <SeekBar
+                android:id="@+id/seek_show"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:max="60"
+                android:progress="5"
+                android:layout_weight="1"/>
+        </LinearLayout>
+
+        <!-- 페이드 시간 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp">
+
+            <TextView
+                android:id="@+id/txt_fade"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="페이드: 2초"
+                android:textSize="16sp"
+                android:textStyle="bold"/>
+
+            <SeekBar
+                android:id="@+id/seek_fade"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:max="10"
+                android:progress="2"
+                android:layout_weight="1"/>
+        </LinearLayout>
+
+        <!-- 표시 순서(랜덤/사용자지정) 토글 -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/row_shuffle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:clickable="true"
+            android:focusable="true"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp"
+            app:strokeWidth="1dp"
+            app:strokeColor="?attr/colorOutline"
+            android:foreground="?attr/selectableItemBackground">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="12dp"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/txt_shuffle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="표시 순서: 사용자 지정"
+                    android:textSize="16sp"/>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 이미지 추가 -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_add"
+            style="?attr/materialButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginTop="8dp"
+            android:text="이미지 추가" />
+    </LinearLayout>
+
+    <!-- 현재 등록된 이미지 목록 -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rv_images"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:clipToPadding="false"
-        android:paddingStart="24dp"
-        android:paddingEnd="24dp"
-        android:paddingTop="12dp"
-        app:layout_constraintTop_toBottomOf="@id/btn_add"
-        app:layout_constraintBottom_toTopOf="@+id/fade_container"
+        android:overScrollMode="never"
+        app:layout_constraintTop_toBottomOf="@id/section_controls"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- 페이드 설정 -->
-    <LinearLayout
-        android:id="@+id/fade_container"
-        android:layout_width="0dp"
+    <!-- 비었을 때 안내 -->
+    <TextView
+        android:id="@+id/empty_hint"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingStart="24dp"
-        android:paddingEnd="24dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="24dp"
+        android:text="아직 등록된 이미지가 없습니다"
+        android:textSize="16sp"
+        android:alpha="0.6"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/section_controls"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <TextView
-            android:id="@+id/txt_fade"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="페이드(초): 0"
-            android:textSize="18sp"
-            android:textColor="?attr/colorOnSurface"/>
-
-        <SeekBar
-            android:id="@+id/seek_fade"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
-            android:max="15"
-            app:layout_constraintWidth_default="spread"
-            android:layout_weight="1"/>
-    </LinearLayout>
+        app:layout_constraintEnd_toEndOf="parent"/>
 </androidx.constraintlayout.widget.ConstraintLayout>

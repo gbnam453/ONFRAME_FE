@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 코드에서 참조하지만 실제 뷰엔 없을 수도 있는 ID를 선언해 컴파일 오류 방지 -->
+    <item name="btn_remove" type="id"/>
+</resources>
