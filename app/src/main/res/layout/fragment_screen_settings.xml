@@ -2,29 +2,67 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface">
+    android:paddingLeft="24dp"
+    android:paddingRight="24dp"
+    android:paddingTop="16dp"
+    android:paddingBottom="16dp">
 
-    <!-- 공용 헤더 -->
-    <include
-        android:id="@+id/header"
-        layout="@layout/include_subpage_header"
-        app:layout_constraintTop_toTopOf="parent"
+    <!-- 헤더: 뒤로가기 / 제목 / 저장 -->
+    <ImageButton
+        android:id="@+id/btn_back"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/abc_action_bar_up_description"
+        android:src="@drawable/ic_arrow_back_24"
+        app:tint="?attr/colorOnBackground"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintTop_toTopOf="parent"/>
 
-    <!-- 정렬 리스트 -->
+    <TextView
+        android:id="@+id/txt_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="화면 설정"
+        android:textStyle="bold"
+        android:textSize="28sp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        app:layout_constraintStart_toEndOf="@id/btn_back"
+        app:layout_constraintEnd_toStartOf="@id/btn_save"
+        app:layout_constraintTop_toTopOf="@id/btn_back"
+        app:layout_constraintBottom_toBottomOf="@id/btn_back"/>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_save"
+        style="?attr/materialButtonStyle"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:minWidth="0dp"
+        android:text="저장"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        app:iconPadding="12dp"
+        app:cornerRadius="20dp"
+        app:backgroundTint="?attr/colorSecondaryContainer"
+        android:textColor="?attr/colorOnSecondaryContainer"
+        app:iconTint="?attr/colorOnSecondaryContainer"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@id/btn_back"
+        app:layout_constraintBottom_toBottomOf="@id/btn_back"/>
+
+    <!-- 가로 카드 캐러셀 -->
     <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rv_order"
+        android:id="@+id/rv_cards"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:clipToPadding="false"
-        android:paddingStart="24dp"
-        android:paddingEnd="24dp"
-        android:paddingBottom="24dp"
-        app:layout_constraintTop_toBottomOf="@id/header"
+        android:overScrollMode="never"
+        app:layout_constraintTop_toBottomOf="@id/btn_back"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
+
 </androidx.constraintlayout.widget.ConstraintLayout>
