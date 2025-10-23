@@ -3,24 +3,24 @@
     android:id="@+id/album_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#ffffff">
+    android:background="@android:color/black">
 
-    <!-- 아래 레이어 -->
+    <!-- 현재 보여주는 이미지 -->
     <ImageView
-        android:id="@+id/imageA"
+        android:id="@+id/imgA"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
-        android:adjustViewBounds="false"
-        android:contentDescription="@null" />
+        android:contentDescription="@null"
+        android:visibility="invisible" />
 
-    <!-- 위 레이어 (항상 새 이미지가 여기에 로드되고 alpha 0->1로 페이드) -->
+    <!-- 다음 이미지를 미리 로딩해 두는 이미지 -->
     <ImageView
-        android:id="@+id/imageB"
+        android:id="@+id/imgB"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
-        android:adjustViewBounds="false"
-        android:contentDescription="@null" />
+        android:contentDescription="@null"
+        android:visibility="invisible" />
 
 </FrameLayout>

@@ -5,38 +5,40 @@
     android:id="@+id/album_settings_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:paddingLeft="32dp"
-    android:paddingRight="32dp"
-    android:paddingTop="20dp"
-    android:paddingBottom="20dp">
+    android:paddingLeft="24dp"
+    android:paddingRight="24dp"
+    android:paddingTop="16dp"
+    android:paddingBottom="16dp">
 
-    <!-- 공용 헤더 include -->
+    <!-- 헤더 공용 include (스크린 설정과 동일 위치) -->
     <include
-        android:id="@+id/header"
+        android:id="@+id/settings_header"
         layout="@layout/include_settings_header"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginStart="32dp"
+        android:layout_marginEnd="32dp"
+        android:layout_marginTop="20dp" />
 
     <!-- 좌측: 설정 카드 -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/panel_controls"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:cardUseCompatPadding="true"
+        android:layout_marginTop="16dp"
         app:cardCornerRadius="16dp"
         app:cardElevation="2dp"
-        app:strokeWidth="1dp"
+        app:cardUseCompatPadding="true"
         app:strokeColor="?attr/colorOutline"
-        app:layout_constraintTop_toBottomOf="@id/header"
+        app:strokeWidth="1dp"
+        app:layout_constraintTop_toBottomOf="@id/settings_header"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toStartOf="@id/panel_list"
-        app:layout_constraintHorizontal_weight="1"
-        android:layout_marginTop="16dp"
-        android:layout_marginRight="16dp">
+        app:layout_constraintHorizontal_weight="1">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -50,20 +52,20 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="한 장 표시: 5초"
-                android:textStyle="bold"
-                android:textSize="18sp"/>
+                android:textSize="18sp"
+                android:textStyle="bold" />
 
             <SeekBar
                 android:id="@+id/seek_show"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"/>
+                android:layout_marginTop="8dp" />
 
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
                 android:layout_marginTop="16dp"
-                android:background="?attr/colorOutline"/>
+                android:background="?attr/colorOutline" />
 
             <!-- 전환(페이드) 시간: 0.1초 단위 -->
             <TextView
@@ -72,20 +74,20 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:text="페이드: 1.0초"
-                android:textStyle="bold"
-                android:textSize="18sp"/>
+                android:textSize="18sp"
+                android:textStyle="bold" />
 
             <SeekBar
                 android:id="@+id/seek_fade"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"/>
+                android:layout_marginTop="8dp" />
 
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
                 android:layout_marginTop="16dp"
-                android:background="?attr/colorOutline"/>
+                android:background="?attr/colorOutline" />
 
             <!-- 순서: 무작위/사용자 -->
             <LinearLayout
@@ -93,8 +95,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:orientation="horizontal"
                 android:gravity="center_vertical"
+                android:orientation="horizontal"
                 android:paddingTop="4dp"
                 android:paddingBottom="4dp">
 
@@ -104,12 +106,12 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="사용자 순서대로"
-                    android:textSize="16sp"/>
+                    android:textSize="16sp" />
 
                 <Switch
                     android:id="@+id/switch_shuffle"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"/>
+                    android:layout_height="wrap_content" />
             </LinearLayout>
 
         </LinearLayout>
@@ -120,17 +122,17 @@
         android:id="@+id/panel_list"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:layout_marginTop="16dp"
         app:cardUseCompatPadding="true"
         app:cardCornerRadius="16dp"
         app:cardElevation="2dp"
         app:strokeWidth="1dp"
         app:strokeColor="?attr/colorOutline"
-        app:layout_constraintTop_toBottomOf="@id/header"
+        app:layout_constraintTop_toBottomOf="@id/settings_header"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@id/panel_controls"
-        app:layout_constraintHorizontal_weight="1"
-        android:layout_marginTop="16dp">
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_weight="1">
 
         <FrameLayout
             android:layout_width="match_parent"
