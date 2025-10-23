@@ -1,188 +1,252 @@
 package com.neovision.onframe;
 
+import android.graphics.drawable.Drawable;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.Gravity;
-import android.view.ViewGroup;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.widget.FrameLayout;
+import android.view.ViewGroup;
 import android.widget.ImageView;
-import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import com.bumptech.glide.Glide;
-
-import android.graphics.drawable.Drawable;
-import com.bumptech.glide.request.target.CustomTarget;
-import com.bumptech.glide.request.transition.Transition;
+import com.bumptech.glide.load.engine.GlideException;
+import com.bumptech.glide.request.RequestListener;
+import com.bumptech.glide.request.target.Target;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 
 /**
- * 전체화면 슬라이드쇼 (두 개의 ImageView를 겹쳐서 매 전환마다 알파 페이드)
- * - AlbumStore 설정(표시시간, 페이드시간, 랜덤/사용자순서) 반영
+ * 앨범 화면 전용 프래그먼트
+ * - 항상 전체화면(centerCrop)으로 이미지 표시
+ * - 새 이미지는 백 레이어(imageB)에 먼저 로드 -> 로드 완료 후에만 크로스페이드 시작 → 이전 프레임이 보이는 깜빡임 제거
+ * - 표시시간/페이드시간/셔플 설정은 AlbumStore에서 읽어옴
  */
 public class AlbumFragment extends Fragment {
 
+    private ImageView imageA;
+    private ImageView imageB;
+
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Runnable slideTask = this::showNext;
+    private Runnable tick;
 
-    private ImageView front; // 현재 화면에 보이는 쪽
-    private ImageView back;  // 다음 이미지를 미리 그려둘 쪽
-    private TextView emptyView;
-
-    private List<String> images = new ArrayList<>();
-    private int index = 0;
-
-    private int showSec = 5;
-    private int fadeSec = 2;
+    private final ArrayList<Uri> images = new ArrayList<>();
     private boolean shuffle = false;
+    private int showMs = 3000; // 기본값
+    private int fadeMs = 500;  // 기본값
 
-    private boolean frontIsA = true;
+    // 셔플용
+    private final Random random = new Random();
+    private final ArrayList<Integer> order = new ArrayList<>();
+    private int orderPos = 0;
 
-    @Nullable @Override
-    public View onCreateView(@NonNull LayoutInflater inf, @Nullable ViewGroup container, @Nullable Bundle s) {
-        FrameLayout root = new FrameLayout(requireContext());
-        root.setLayoutParams(new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    // 현재 화면에 보이는 레이어가 A인지 여부 (A가 앞: true)
+    private boolean aIsFront = true;
 
-        ImageView a = new ImageView(requireContext());
-        a.setLayoutParams(new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        a.setScaleType(ImageView.ScaleType.CENTER_CROP);
-
-        ImageView b = new ImageView(requireContext());
-        b.setLayoutParams(new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        b.setScaleType(ImageView.ScaleType.CENTER_CROP);
-
-        // 쌓는 순서: 아래 back, 위 front
-        root.addView(a);
-        root.addView(b);
-
-        front = b;
-        back  = a;
-
-        emptyView = new TextView(requireContext());
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.gravity = Gravity.CENTER;
-        emptyView.setLayoutParams(lp);
-        emptyView.setText("이미지를 추가해 주세요");
-        emptyView.setAlpha(0.6f);
-        emptyView.setTextSize(18f);
-        emptyView.setVisibility(View.GONE);
-
-        root.addView(emptyView);
-
-        return root;
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inf, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        return inf.inflate(R.layout.fragment_album, container, false);
     }
 
-    @Override public void onResume() {
+    @Override
+    public void onViewCreated(@NonNull View v, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(v, savedInstanceState);
+        imageA = v.findViewById(R.id.imageA);
+        imageB = v.findViewById(R.id.imageB);
+
+        // 첫 진입 시 alpha 초기화
+        imageA.setAlpha(1f);
+        imageB.setAlpha(0f);
+    }
+
+    @Override
+    public void onResume() {
         super.onResume();
-        reloadConfigAndStart();
+        // 설정값 매번 새로 읽어서 즉시 반영
+        loadConfigAndImages();
+        startSlideshow();
     }
 
-    @Override public void onPause() {
+    @Override
+    public void onPause() {
         super.onPause();
-        handler.removeCallbacks(slideTask);
+        stopSlideshow();
+        // 애니메이션/요청 정리
+        if (imageA != null) { imageA.animate().cancel(); Glide.with(this).clear(imageA); }
+        if (imageB != null) { imageB.animate().cancel(); Glide.with(this).clear(imageB); }
     }
 
-    private void reloadConfigAndStart() {
-        handler.removeCallbacks(slideTask);
+    // --- 설정/이미지 로딩 ---
 
-        images = AlbumStore.getImages(requireContext());
-        showSec = Math.max(1, AlbumStore.getShowSec(requireContext()));
-        fadeSec = Math.max(0, AlbumStore.getFadeSec(requireContext()));
-        shuffle = AlbumStore.isShuffle(requireContext());
+    private void loadConfigAndImages() {
+        // 시간 설정
+        try {
+            int showSec = Math.max(1, AlbumStore.getShowSeconds(requireContext())); // 최소 1초
+            float fadeSec = Math.max(0f, AlbumStore.getFadeSeconds(requireContext()));
+            showMs = Math.max(200, showSec * 1000);
+            fadeMs = Math.max(0, Math.round(fadeSec * 1000f));
+        } catch (Throwable ignore) {}
 
-        if (images == null) images = new ArrayList<>();
-        if (images.isEmpty()) {
-            front.setVisibility(View.GONE);
-            back.setVisibility(View.GONE);
-            emptyView.setVisibility(View.VISIBLE);
+        // 셔플 설정
+        try {
+            shuffle = AlbumStore.isShuffle(requireContext());
+        } catch (Throwable ignore) {
+            shuffle = false;
+        }
+
+        // 이미지 목록
+        images.clear();
+        try {
+            List<Uri> saved = AlbumStore.getImages(requireContext());
+            if (saved != null) images.addAll(saved);
+        } catch (Throwable ignore) {}
+
+        buildOrder();
+    }
+
+    private void buildOrder() {
+        order.clear();
+        for (int i = 0; i < images.size(); i++) order.add(i);
+        if (shuffle) Collections.shuffle(order, random);
+        orderPos = 0;
+    }
+
+    private int nextIndex() {
+        if (images.isEmpty()) return -1;
+        if (orderPos >= order.size()) {
+            // 한 바퀴 돌았으면 다시 빌드(셔플은 다시 섞임)
+            buildOrder();
+        }
+        return order.get(orderPos++);
+    }
+
+    // --- 슬라이드쇼 제어 ---
+
+    private void startSlideshow() {
+        stopSlideshow(); // 중복 방지
+        if (images.isEmpty()) return;
+
+        // 첫 프레임: front에 즉시 로드 (애니메이션 없음)
+        final int first = nextIndex();
+        if (first == -1) return;
+        final ImageView front = frontView();
+        final Uri u = images.get(first);
+
+        front.animate().cancel();
+        backView().animate().cancel();
+        front.setAlpha(1f);
+        backView().setAlpha(0f);
+
+        Glide.with(this)
+                .load(u)
+                .centerCrop()
+                .dontAnimate() // 우리가 직접 제어
+                .into(front);
+
+        scheduleNext(); // 다음 프레임 예약
+    }
+
+    private void stopSlideshow() {
+        if (tick != null) {
+            handler.removeCallbacks(tick);
+            tick = null;
+        }
+    }
+
+    private void scheduleNext() {
+        stopSlideshow();
+        tick = () -> {
+            int ni = nextIndex();
+            if (ni == -1 || !isAdded()) return;
+
+            final Uri nextUri = images.get(ni);
+            final ImageView oldFront = frontView();
+            final ImageView incoming = backView();
+
+            // 먼저 새 이미지를 백 레이어에 로드(비가시 alpha 0)
+            incoming.animate().cancel();
+            oldFront.animate().cancel();
+            incoming.setAlpha(0f);
+
+            Glide.with(this)
+                    .load(nextUri)
+                    .centerCrop()
+                    .dontAnimate() // Glide 애니메이션 금지(깜빡임 방지)
+                    .listener(new RequestListener<Drawable>() {
+                        @Override
+                        public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
+                            // 실패해도 다음 주기 예약 (끊김 방지)
+                            swapWithoutFade();
+                            return false; // 에러 placeholder 처리 Glide에게 맡김
+                        }
+
+                        @Override
+                        public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, com.bumptech.glide.load.DataSource dataSource, boolean isFirstResource) {
+                            // 리소스가 준비된 순간부터만 크로스페이드 시작
+                            doCrossfade(oldFront, incoming);
+                            return false; // 이미지 세팅은 Glide가 진행
+                        }
+                    })
+                    .into(incoming);
+        };
+        handler.postDelayed(tick, showMs);
+    }
+
+    private void doCrossfade(ImageView oldFront, ImageView incoming) {
+        if (!isAdded()) return;
+
+        // incoming이 위에 오도록
+        incoming.bringToFront();
+
+        if (fadeMs <= 0) {
+            // 페이드 없음: 즉시 전환
+            incoming.setAlpha(1f);
+            aIsFront = !aIsFront;
+            // 이전 이미지 정리 (메모리/잔상 방지)
+            Glide.with(this).clear(oldFront);
+            scheduleNext();
             return;
         }
 
-        emptyView.setVisibility(View.GONE);
-        front.setVisibility(View.VISIBLE);
-        back.setVisibility(View.VISIBLE);
+        // 크로스페이드
+        incoming.animate().cancel();
+        oldFront.animate().cancel();
 
-        if (shuffle) {
-            images = new ArrayList<>(images);
-            Collections.shuffle(images);
-        }
-        index = index % images.size();
-
-        // 첫 장은 페이드 없이 front에 바로 세팅
-        loadInto(front, images.get(index), false, 0, null);
-
-        scheduleNext(showSec * 1000L);
+        incoming.setAlpha(0f);
+        incoming.animate()
+                .alpha(1f)
+                .setDuration(fadeMs)
+                .withEndAction(() -> {
+                    // 전환 완료 후 front 스와핑
+                    aIsFront = !aIsFront;
+                    // 이전 이미지 정리(가끔 보이던 잔상/플래시 방지)
+                    Glide.with(this).clear(oldFront);
+                    oldFront.setAlpha(1f); // 다음 전환 대비 초기화
+                    scheduleNext();
+                })
+                .start();
     }
 
-    private void showNext() {
-        if (!isAdded() || images.isEmpty()) return;
-        index = (index + 1) % images.size();
-
-        final int fadeMs = Math.max(0, fadeSec * 1000);
-
-        // 다음 이미지를 back에 로드 → 로드 완료 시 front/back를 알파로 교차
-        loadInto(back, images.get(index), true, fadeMs, () -> {
-            if (!isAdded()) return;
-
-            // 교차 페이드
-            back.setAlpha(0f);
-            back.animate().alpha(1f).setDuration(fadeMs).start();
-            front.animate().alpha(0f).setDuration(fadeMs).withEndAction(() -> {
-                // front를 back과 교체
-                ImageView tmp = front;
-                front = back;
-                back  = tmp;
-
-                // 다음 전환 대비 초기화
-                back.setAlpha(1f);
-                front.bringToFront();
-
-                scheduleNext(showSec * 1000L);
-            }).start();
-        });
+    private void swapWithoutFade() {
+        // 로드 실패 시에도 쇼는 진행되도록 그냥 front 토글
+        aIsFront = !aIsFront;
+        scheduleNext();
     }
 
-    private void scheduleNext(long delayMs) {
-        handler.removeCallbacks(slideTask);
-        handler.postDelayed(slideTask, delayMs);
+    private ImageView frontView() {
+        return aIsFront ? imageA : imageB;
     }
 
-    /**
-     * Glide로 Drawable을 받아서 원하는 ImageView에 세팅.
-     * onReady 콜백으로 로드 완료 타이밍에 페이드 트리거 가능.
-     */
-    private void loadInto(ImageView target, String src, boolean waitReady, int fadeMs, @Nullable Runnable onReady) {
-        Object model = src;
-        if (src != null) {
-            if (src.startsWith("/")) model = "file://" + src;
-            else if (src.startsWith("content://") || src.startsWith("file://")) model = src;
-        }
-
-        if (waitReady) {
-            Glide.with(this)
-                    .load(model)
-                    .into(new CustomTarget<Drawable>() {
-                        @Override public void onResourceReady(@NonNull Drawable resource, @Nullable Transition<? super Drawable> transition) {
-                            target.setImageDrawable(resource);
-                            if (onReady != null) onReady.run();
-                        }
-                        @Override public void onLoadCleared(@Nullable Drawable placeholder) { }
-                    });
-        } else {
-            Glide.with(this).load(model).into(target);
-        }
+    private ImageView backView() {
+        return aIsFront ? imageB : imageA;
     }
 }

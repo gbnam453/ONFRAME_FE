@@ -1,24 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/album_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="#ffffff">
 
-    <!-- 전체화면 이미지 -->
+    <!-- 아래 레이어 -->
     <ImageView
-        android:id="@+id/image"
+        android:id="@+id/imageA"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
+        android:adjustViewBounds="false"
         android:contentDescription="@null" />
 
-    <!-- 빈 목록 안내 -->
-    <TextView
-        android:id="@+id/hint"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="이미지를 추가하세요"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:alpha="0.6"
-        android:layout_gravity="center"/>
+    <!-- 위 레이어 (항상 새 이미지가 여기에 로드되고 alpha 0->1로 페이드) -->
+    <ImageView
+        android:id="@+id/imageB"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:adjustViewBounds="false"
+        android:contentDescription="@null" />
+
 </FrameLayout>

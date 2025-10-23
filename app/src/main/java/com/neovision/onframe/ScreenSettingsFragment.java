@@ -53,6 +53,9 @@ public class ScreenSettingsFragment extends Fragment {
         ImageButton btnBack = v.findViewById(R.id.btn_back);
         btnBack.setOnClickListener(view -> safeNavigateBack());
 
+        View addBtn = v.findViewById(R.id.btn_add);
+        if (addBtn != null) addBtn.setVisibility(View.GONE);
+
         btnSave = v.findViewById(R.id.btn_save);
         btnSave.setOnClickListener(view -> {
             if (dirty) {

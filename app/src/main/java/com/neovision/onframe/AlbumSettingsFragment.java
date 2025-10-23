@@ -1,219 +1,332 @@
+// app/src/main/java/com/neovision/onframe/AlbumSettingsFragment.java
 package com.neovision.onframe;
 
-import android.content.ClipData;
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.SeekBar;
-import android.widget.TextView;
-import android.widget.ImageButton;
 import android.widget.Button;
-import android.widget.ImageView;
+import android.widget.ImageButton;
+import android.widget.SeekBar;
+import android.widget.Switch;
+import android.widget.TextView;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 /**
- * 앨범 설정 화면
- * - 현재 이미지 목록 표시/삭제
- * - 표시시간/페이드시간 조절
- * - 랜덤/사용자순서 토글
- * - 이미지 추가(문서 피커)
+ * 앨범설정 화면
+ * - 네가 준 fragment_album_settings.xml 레이아웃을 그대로 사용
+ * - 표시시간(초, 1~60), 페이드(0.0~5.0, 0.1단위), 셔플, 이미지 추가/삭제/순서변경(길게 눌러 드래그)
+ * - 저장 버튼을 눌러야 실제로 AlbumStore에 반영
  */
 public class AlbumSettingsFragment extends Fragment {
 
+    // 헤더
+    private ImageButton btnBack; // 레이아웃은 ImageButton/버튼 혼용 가능하지만 타입은 안전하게 ImageButton로 둠
+    private Button btnAdd;
+    private Button btnSave;
+
+    // 컨트롤
+    private TextView txtShow;   // "한 장 표시: 5초"
+    private TextView txtFade;   // "페이드: 1.0초"
+    private TextView txtShuffle; // "사용자 순서대로" / "무작위 재생"
+    private SeekBar seekShow;
+    private SeekBar seekFade;
+    private Switch switchShuffle;
+
+    // 목록
     private RecyclerView rv;
-    private ImagesAdapter adapter;
-    private final List<String> data = new ArrayList<>();
+    private View emptyHint;
+    private ImageListAdapter adapter;
+    private final ArrayList<Uri> data = new ArrayList<>();
 
-    private TextView txtShow, txtFade, txtShuffle;
-    private SeekBar seekShow, seekFade;
-    private View toggleShuffle;
+    // 저장 전 임시값
+    private int pendingShowSec;
+    private float pendingFadeSec;
+    private boolean pendingShuffle;
 
-    private final ActivityResultLauncher<String[]> picker =
-            registerForActivityResult(new ActivityResultContracts.OpenMultipleDocuments(),
-                    uris -> {
-                        if (uris == null || uris.isEmpty()) return;
-                        List<String> updated = AlbumStore.addImagesFromUris(requireContext(), uris);
-                        data.clear();
-                        data.addAll(updated);
-                        if (adapter != null) adapter.notifyDataSetChanged();
-                    });
+    private boolean dirty = false;
 
-    @Nullable @Override
-    public View onCreateView(@NonNull LayoutInflater inf, @Nullable ViewGroup container, @Nullable Bundle s) {
+    private ActivityResultLauncher<String[]> pickImagesLauncher;
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        // 이미지 다중 선택 런처
+        pickImagesLauncher = registerForActivityResult(
+                new ActivityResultContracts.OpenMultipleDocuments(),
+                uris -> {
+                    if (uris == null || uris.isEmpty()) return;
+
+                    // 영구 읽기 권한
+                    for (Uri u : uris) {
+                        if (u == null) continue;
+                        try {
+                            requireContext().getContentResolver().takePersistableUriPermission(
+                                    u, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            );
+                        } catch (SecurityException ignore) {}
+                    }
+                    // 로컬 리스트에만 추가 (저장 눌러야 반영)
+                    boolean changed = false;
+                    for (Uri u : uris) {
+                        if (u == null) continue;
+                        if (!data.contains(u)) {
+                            data.add(u);
+                            changed = true;
+                        }
+                    }
+                    if (changed) {
+                        adapter.notifyDataSetChanged();
+                        updateEmpty();
+                        setDirty(true);
+                    }
+                }
+        );
+    }
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inf, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         View v = inf.inflate(R.layout.fragment_album_settings, container, false);
 
-        // 헤더
-        ((TextView) v.findViewById(R.id.txt_title)).setText("앨범 설정");
-        ImageButton btnBack = v.findViewById(R.id.btn_back);
-        btnBack.setOnClickListener(view -> getParentFragmentManager().popBackStack());
+        // --- 헤더 ---
+        btnBack = v.findViewById(R.id.btn_back);
+        btnAdd  = v.findViewById(R.id.btn_add);
+        btnSave = v.findViewById(R.id.btn_save);
 
-        Button btnSave = v.findViewById(R.id.btn_save);
+        ((TextView) v.findViewById(R.id.txt_title)).setText("앨범 설정");
+
+        btnBack.setOnClickListener(view -> safeBack());
+        btnAdd.setOnClickListener(view -> pickImagesLauncher.launch(new String[]{"image/*"}));
         btnSave.setOnClickListener(view -> {
-            // 이 화면은 설정이 변경 즉시 저장되는 구조라 별도 처리 없음
-            getParentFragmentManager().popBackStack();
+            // 저장 버튼을 눌러야 실제 반영
+            AlbumStore.setShowSeconds(requireContext(), pendingShowSec);
+            AlbumStore.setFadeSeconds(requireContext(), pendingFadeSec);
+            AlbumStore.setShuffle(requireContext(), pendingShuffle);
+            AlbumStore.setOrder(requireContext(), data);
+            setDirty(false);
+            safeBack();
+        });
+        applySaveEnabled();
+
+        // --- 컨트롤 ---
+        txtShow = v.findViewById(R.id.txt_show);
+        txtFade = v.findViewById(R.id.txt_fade);
+        txtShuffle = v.findViewById(R.id.txt_shuffle);
+        seekShow = v.findViewById(R.id.seek_show);
+        seekFade = v.findViewById(R.id.seek_fade);
+        switchShuffle = v.findViewById(R.id.switch_shuffle);
+
+        // 저장된 값 → pending으로
+        pendingShowSec = AlbumStore.getShowSeconds(requireContext());
+        pendingFadeSec = AlbumStore.getFadeSeconds(requireContext());
+        pendingShuffle = AlbumStore.isShuffle(requireContext());
+
+        // 표시시간: 1~60초
+        seekShow.setMax(60);
+        seekShow.setProgress(Math.max(1, pendingShowSec));
+        txtShow.setText("한 장 표시: " + pendingShowSec + "초");
+        seekShow.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int sec = Math.max(1, progress);
+                pendingShowSec = sec;
+                txtShow.setText("한 장 표시: " + sec + "초");
+                setDirtyIfChanged();
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        // 목록
+        // 페이드: 0.0~5.0s (0.1단위)
+        seekFade.setMax(50);
+        seekFade.setProgress(Math.round(pendingFadeSec * 10f));
+        txtFade.setText(String.format("페이드: %.1f초", pendingFadeSec));
+        seekFade.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                float sec = progress / 10f;
+                pendingFadeSec = sec;
+                txtFade.setText(String.format("페이드: %.1f초", sec));
+                setDirtyIfChanged();
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+
+        // 셔플
+        switchShuffle.setChecked(pendingShuffle);
+        txtShuffle.setText(pendingShuffle ? "무작위 재생" : "사용자 순서대로");
+        switchShuffle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            pendingShuffle = isChecked;
+            txtShuffle.setText(isChecked ? "무작위 재생" : "사용자 순서대로");
+            setDirtyIfChanged();
+        });
+
+        // --- 리스트 ---
         rv = v.findViewById(R.id.rv_images);
-        rv.setLayoutManager(new LinearLayoutManager(requireContext()));
-        adapter = new ImagesAdapter(data, pos -> {
-            if (pos < 0 || pos >= data.size()) return;
-            data.remove(pos);
-            adapter.notifyItemRemoved(pos);
-            AlbumStore.setImages(requireContext(), data);
-            invalidateEmptyInfo(v);
+        emptyHint = v.findViewById(R.id.empty_hint);
+        rv.setLayoutManager(new LinearLayoutManager(requireContext(), RecyclerView.VERTICAL, false));
+        adapter = new ImageListAdapter(data, () -> {
+            setDirty(true);
+            updateEmpty();
         });
         rv.setAdapter(adapter);
 
-        // 드래그로 정렬
-        ItemTouchHelper helper = new ItemTouchHelper(new ItemTouchHelper.SimpleCallback(
+        ItemTouchHelper touch = new ItemTouchHelper(new ItemTouchHelper.SimpleCallback(
                 ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0) {
-            @Override public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder from, @NonNull RecyclerView.ViewHolder to) {
-                int f = from.getBindingAdapterPosition();
-                int t = to.getBindingAdapterPosition();
-                if (f == RecyclerView.NO_POSITION || t == RecyclerView.NO_POSITION) return false;
-                Collections.swap(data, f, t);
-                adapter.notifyItemMoved(f, t);
-                AlbumStore.setImages(requireContext(), data);
+            @Override
+            public boolean onMove(@NonNull RecyclerView recyclerView,
+                                  @NonNull RecyclerView.ViewHolder viewHolder,
+                                  @NonNull RecyclerView.ViewHolder target) {
+                int from = viewHolder.getBindingAdapterPosition();
+                int to = target.getBindingAdapterPosition();
+                if (from == RecyclerView.NO_POSITION || to == RecyclerView.NO_POSITION) return false;
+                Collections.swap(data, from, to);
+                adapter.notifyItemMoved(from, to);
+                setDirty(true);
                 return true;
             }
-            @Override public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) { }
+            @Override public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {}
             @Override public boolean isLongPressDragEnabled() { return true; }
         });
-        helper.attachToRecyclerView(rv);
+        touch.attachToRecyclerView(rv);
 
-        // 버튼: 추가
-        v.findViewById(R.id.btn_add).setOnClickListener(view ->
-                picker.launch(new String[]{"image/*"}));
-
-        // 설정 바인딩
-        txtShow = v.findViewById(R.id.txt_show);
-        txtFade = v.findViewById(R.id.txt_fade);
-        seekShow = v.findViewById(R.id.seek_show);
-        seekFade = v.findViewById(R.id.seek_fade);
-        txtShuffle = v.findViewById(R.id.txt_shuffle);
-        toggleShuffle = v.findViewById(R.id.row_shuffle);
-
-        // 값 로드
+        // 저장된 이미지 → 로컬 리스트로 (저장 누르기 전까지는 메모리에서만 편집)
         data.clear();
         data.addAll(AlbumStore.getImages(requireContext()));
         adapter.notifyDataSetChanged();
-        invalidateEmptyInfo(v);
-
-        int show = Math.max(1, AlbumStore.getShowSec(requireContext()));
-        int fade = Math.max(0, AlbumStore.getFadeSec(requireContext()));
-        boolean shuffle = AlbumStore.isShuffle(requireContext());
-
-        txtShow.setText("표시 시간: " + show + "초");
-        txtFade.setText("페이드: " + fade + "초");
-        txtShuffle.setText(shuffle ? "표시 순서: 랜덤" : "표시 순서: 사용자 지정");
-
-        seekShow.setProgress(show);
-        seekFade.setProgress(fade);
-
-        seekShow.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
-                int v1 = Math.max(1, progress);
-                AlbumStore.setShowSec(requireContext(), v1);
-                txtShow.setText("표시 시간: " + v1 + "초");
-            }
-            @Override public void onStartTrackingTouch(SeekBar sb) { }
-            @Override public void onStopTrackingTouch(SeekBar sb) { }
-        });
-        seekFade.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
-                int v1 = Math.max(0, progress);
-                AlbumStore.setFadeSec(requireContext(), v1);
-                txtFade.setText("페이드: " + v1 + "초");
-            }
-            @Override public void onStartTrackingTouch(SeekBar sb) { }
-            @Override public void onStopTrackingTouch(SeekBar sb) { }
-        });
-
-        toggleShuffle.setOnClickListener(view -> {
-            boolean cur = AlbumStore.isShuffle(requireContext());
-            AlbumStore.setShuffle(requireContext(), !cur);
-            txtShuffle.setText(!cur ? "표시 순서: 랜덤" : "표시 순서: 사용자 지정");
-        });
+        updateEmpty();
+        setDirty(false);
 
         return v;
     }
 
-    private void invalidateEmptyInfo(View root) {
-        View empty = root.findViewById(R.id.empty_hint);
-        if (empty != null) empty.setVisibility(data.isEmpty() ? View.VISIBLE : View.GONE);
+    private void updateEmpty() {
+        if (emptyHint != null) emptyHint.setVisibility(data.isEmpty() ? View.VISIBLE : View.GONE);
+    }
+
+    private void setDirtyIfChanged() {
+        boolean changed = false;
+        if (pendingShowSec != AlbumStore.getShowSeconds(requireContext())) changed = true;
+        if (Math.abs(pendingFadeSec - AlbumStore.getFadeSeconds(requireContext())) > 0.0001f) changed = true;
+        if (pendingShuffle != AlbumStore.isShuffle(requireContext())) changed = true;
+        if (!changed) {
+            // 리스트 비교
+            List<Uri> saved = AlbumStore.getImages(requireContext());
+            if (saved.size() != data.size()) changed = true;
+            else {
+                for (int i = 0; i < saved.size(); i++) {
+                    if (!saved.get(i).toString().equals(data.get(i).toString())) { changed = true; break; }
+                }
+            }
+        }
+        setDirty(changed);
+    }
+
+    private void setDirty(boolean d) {
+        dirty = d;
+        applySaveEnabled();
+    }
+
+    private void applySaveEnabled() {
+        if (btnSave != null) {
+            btnSave.setEnabled(dirty);
+            btnSave.setAlpha(dirty ? 1f : 0.4f);
+        }
+    }
+
+    private void safeBack() {
+        if (!isAdded()) return;
+        Fragment parent = getParentFragment();
+        if (parent != null) {
+            FragmentManager child = parent.getChildFragmentManager();
+            if (!child.isStateSaved() && child.getBackStackEntryCount() > 0) {
+                child.popBackStack();
+                return;
+            }
+        }
+        FragmentManager fm = getParentFragmentManager();
+        if (!fm.isStateSaved() && fm.getBackStackEntryCount() > 0) {
+            fm.popBackStack();
+            return;
+        }
+        if (getActivity() != null) getActivity().getOnBackPressedDispatcher().onBackPressed();
     }
 
     // --- 어댑터 ---
+    private static class ImageListAdapter extends RecyclerView.Adapter<ImageListAdapter.VH> {
+        private final ArrayList<Uri> items;
+        private final Runnable onListChanged;
 
-    static class ImagesAdapter extends RecyclerView.Adapter<ImagesAdapter.VH> {
-        interface Listener { void onDelete(int pos); }
-        private final List<String> data;
-        private final Listener listener;
+        ImageListAdapter(ArrayList<Uri> items, Runnable onListChanged) {
+            setHasStableIds(true);
+            this.items = items;
+            this.onListChanged = onListChanged;
+        }
 
-        ImagesAdapter(List<String> data, Listener l) { this.data = data; this.listener = l; }
+        @Override public long getItemId(int position) {
+            return items.get(position).toString().hashCode();
+        }
 
-        @NonNull @Override public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        @NonNull @Override
+        public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_album_image, parent, false);
             return new VH(v);
         }
 
-        @Override public void onBindViewHolder(@NonNull VH h, int position) {
-            String path = data.get(position);
-            Object model = path;
-            if (path != null) {
-                if (path.startsWith("/")) model = new File(path);
-                else if (path.startsWith("content://") || path.startsWith("file://")) model = Uri.parse(path);
-            }
+        @Override
+        public void onBindViewHolder(@NonNull VH h, int position) {
+            Uri u = items.get(position);
 
             // 썸네일
-            if (h.thumb != null) {
-                Glide.with(h.itemView).load(model).centerCrop().into(h.thumb);
-            }
-            // 파일명 표시 (있으면)
-            if (h.name != null) {
-                String name = path;
-                int idx = path != null ? path.lastIndexOf('/') : -1;
-                if (idx >= 0 && idx + 1 < path.length()) name = path.substring(idx + 1);
-                h.name.setText(name != null ? name : "");
-            }
-            // 삭제 버튼
-            if (h.btnDelete != null) {
-                h.btnDelete.setOnClickListener(v -> {
-                    if (listener != null) listener.onDelete(h.getBindingAdapterPosition());
-                });
-            }
+            Glide.with(h.thumb.getContext())
+                    .load(u)
+                    .centerCrop()
+                    .into(h.thumb);
+
+            // 파일명
+            String last = u.getLastPathSegment();
+            h.name.setText(last != null ? last : u.toString());
+
+            // 삭제 (저장 전에 로컬 리스트만 수정)
+            h.btnDelete.setOnClickListener(v -> {
+                int pos = h.getBindingAdapterPosition();
+                if (pos != RecyclerView.NO_POSITION) {
+                    items.remove(pos);
+                    notifyItemRemoved(pos);
+                    if (onListChanged != null) onListChanged.run();
+                }
+            });
         }
 
-        @Override public int getItemCount() { return data.size(); }
+        @Override public int getItemCount() { return items.size(); }
 
         static class VH extends RecyclerView.ViewHolder {
-            final ImageView thumb;
-            final TextView name;
-            final View btnDelete;
+            final android.widget.ImageView thumb;
+            final android.widget.TextView name;
+            final android.widget.ImageButton btnDelete;
             VH(@NonNull View itemView) {
                 super(itemView);
-                thumb = itemView.findViewById(R.id.img_thumb);
+                thumb = itemView.findViewById(R.id.thumb);
                 name = itemView.findViewById(R.id.txt_name);
-                View del = itemView.findViewById(R.id.btn_delete);
-                btnDelete = del != null ? del : itemView.findViewById(R.id.btn_remove);
+                btnDelete = itemView.findViewById(R.id.btn_delete);
             }
         }
     }
