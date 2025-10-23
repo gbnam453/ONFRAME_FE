@@ -3,24 +3,21 @@
     android:id="@+id/album_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/black">
+    android:background="#000000">
 
-    <!-- 현재 보여주는 이미지 -->
+    <!-- 두 이미지를 겹쳐두고 교대로 cross-fade -->
     <ImageView
-        android:id="@+id/imgA"
+        android:id="@+id/imageA"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
-        android:contentDescription="@null"
-        android:visibility="invisible" />
+        android:contentDescription="@null" />
 
-    <!-- 다음 이미지를 미리 로딩해 두는 이미지 -->
     <ImageView
-        android:id="@+id/imgB"
+        android:id="@+id/imageB"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
-        android:contentDescription="@null"
-        android:visibility="invisible" />
+        android:contentDescription="@null" />
 
 </FrameLayout>

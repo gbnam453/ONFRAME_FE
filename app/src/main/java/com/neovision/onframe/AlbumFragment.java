@@ -1,5 +1,7 @@
 package com.neovision.onframe;
 
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
@@ -8,6 +10,7 @@ import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.AccelerateDecelerateInterpolator;
 import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
@@ -15,199 +18,221 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import com.bumptech.glide.Glide;
-import com.bumptech.glide.Priority;
+import com.bumptech.glide.load.DataSource;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
-import com.bumptech.glide.request.target.CustomTarget;
-import com.bumptech.glide.request.transition.Transition;
+import com.bumptech.glide.load.engine.GlideException;
+import com.bumptech.glide.request.RequestListener;
+import com.bumptech.glide.request.target.Target;
 
-import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 
 /**
- * 앨범 화면: 더블버퍼(이미지뷰 2장) + 선로딩으로 딜레이/깜빡임 없이 전체화면 슬라이드
+ * 앨범 화면: 전체화면 이미지 슬라이드 + '진짜' 크로스페이드
+ * - 두 개의 겹친 ImageView 사이를 교대로 페이드 (동시에 out/in)
+ * - 다음 이미지가 "로드 완료"된 뒤에만 전환 시작 → 검정 화면/깜빡임 방지
+ * - centerCrop 으로 화면 가득 표시
  */
 public class AlbumFragment extends Fragment {
 
-    private ImageView imgA, imgB;
-    private boolean showingA = true; // 현재 화면에 보이는 이미지뷰가 A인지 여부
+    // 설정 키 (AlbumSettingsFragment와 동일 키 사용)
+    private static final String PREFS = "album_prefs";
+    private static final String KEY_IMAGES   = "album_images";        // "uri||uri||..."
+    private static final String KEY_SHOW_SEC = "album_show_seconds";  // int(초)
+    private static final String KEY_FADE_SEC = "album_fade_seconds";  // float(초)
+    private static final String KEY_SHUFFLE  = "album_shuffle";       // boolean
+
+    private static final int    DEF_SHOW_SEC = 5;      // 기본 한장 표시 5초
+    private static final float  DEF_FADE_SEC = 1.0f;   // 기본 페이드 1.0초
+
+    private ImageView imgA, imgB;     // 두 장 레이어
+    private ImageView front, back;     // 현재/다음 대상
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private Runnable advanceTask;
-    private CustomTarget<Drawable> pendingTarget; // 진행 중 로딩 타겟 해제용
 
-    private List<Uri> images = new ArrayList<>();
+    private final List<Uri> uris = new ArrayList<>();
     private int index = -1;
+    private boolean shuffle = false;
 
-    private int showMs = 5000;  // 한 장 표시 시간(ms)
-    private int fadeMs = 800;   // 페이드 시간(ms)
+    private int showMs;   // 표시 시간(ms)
+    private int fadeMs;   // 크로스페이드 시간(ms)
 
-    // 마지막으로 본 이미지를 약하게 기억해 두었다가 진입 즉시 붙여 '검은 화면' 제거
-    private static WeakReference<Drawable> sLastDrawableRef;
+    private final Runnable nextTick = new Runnable() {
+        @Override public void run() {
+            if (!isAdded() || uris.isEmpty()) return;
+            int next = (index + 1) % uris.size();
+            crossFadeTo(uris.get(next));
+        }
+    };
 
-    @Nullable @Override
-    public View onCreateView(@NonNull LayoutInflater inflater,
-                             @Nullable ViewGroup container,
-                             @Nullable Bundle savedInstanceState) {
-        return inflater.inflate(R.layout.fragment_album, container, false);
-    }
-
+    @Nullable
     @Override
-    public void onViewCreated(@NonNull View v, @Nullable Bundle savedInstanceState) {
-        imgA = v.findViewById(R.id.imgA);
-        imgB = v.findViewById(R.id.imgB);
+    public View onCreateView(@NonNull LayoutInflater inf, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        View v = inf.inflate(R.layout.fragment_album, container, false);
 
-        // 마지막 본 이미지가 있으면 즉시 붙여 첫 진입 딜레이 제거
-        Drawable last = sLastDrawableRef != null ? sLastDrawableRef.get() : null;
-        if (last != null) {
-            imgA.setImageDrawable(last);
-            imgA.setVisibility(View.VISIBLE);
-            showingA = true;
-        }
-    }
+        imgA = v.findViewById(R.id.imageA);
+        imgB = v.findViewById(R.id.imageB);
 
-    @Override
-    public void onResume() {
-        super.onResume();
-        loadSettings();
-        loadImages();
-        startSlideshow();
-    }
+        // 시작 상태: 둘 다 투명. 첫 로드가 끝나면 보이게 만든다.
+        imgA.setAlpha(0f);
+        imgB.setAlpha(0f);
+        imgA.setVisibility(View.VISIBLE);
+        imgB.setVisibility(View.VISIBLE);
 
-    @Override
-    public void onPause() {
-        super.onPause();
-        stopSlideshow();
-    }
+        front = imgA;
+        back  = imgB;
 
-    private void loadSettings() {
-        try {
-            int showSec  = AlbumStore.getShowSeconds(requireContext());
-            float fadeSec = AlbumStore.getFadeSeconds(requireContext());
-            showMs = Math.max(200, showSec * 1000);
-            fadeMs = Math.max(0, Math.round(fadeSec * 1000f));
-        } catch (Throwable ignore) {
-            // 안전 기본값
-            showMs = 5000;
-            fadeMs = 800;
-        }
-    }
+        loadConfig(v.getContext());
+        loadImages(v.getContext());
 
-    private void loadImages() {
-        try {
-            List<Uri> list = AlbumStore.getImages(requireContext());
-            images.clear();
-            if (list != null) images.addAll(list);
-            if (AlbumStore.isShuffle(requireContext())) {
-                Collections.shuffle(images);
-            }
-        } catch (Throwable ignore) {
-            images.clear();
-        }
-    }
-
-    private void startSlideshow() {
-        stopSlideshow(); // 중복 방지
-
-        if (images.isEmpty()) {
-            // 이미지 없음 → 두 뷰 모두 감추고 종료
-            imgA.setVisibility(View.INVISIBLE);
-            imgB.setVisibility(View.INVISIBLE);
-            index = -1;
-            return;
-        }
-
-        // 첫 장 세팅: 화면에 보이는 뷰에 즉시 로드(애니메이션 없이)
-        if (index < 0) {
+        if (!uris.isEmpty()) {
+            // 첫 장 '로드 완료' 후 바로 표시(페이드 없이)
             index = 0;
-            final ImageView cur = showingA ? imgA : imgB;
-            cur.setVisibility(View.VISIBLE);
-            loadInto(cur, images.get(index), /*notify*/ null);
+            preloadInto(front, uris.get(index), new Runnable() {
+                @Override public void run() {
+                    if (!isAdded()) return;
+                    front.setAlpha(1f);   // 첫 장은 바로 보이게
+                    scheduleNext();
+                }
+            });
         }
 
-        scheduleNext();
+        return v;
     }
 
-    private void stopSlideshow() {
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
         handler.removeCallbacksAndMessages(null);
-        if (pendingTarget != null) {
-            try { Glide.with(this).clear(pendingTarget); } catch (Throwable ignore) {}
-            pendingTarget = null;
+        // Glide 요청 정리
+        if (getContext() != null) {
+            Glide.with(getContext()).clear(imgA);
+            Glide.with(getContext()).clear(imgB);
         }
+    }
+
+    // -----------------------
+    // Core: Cross-fade logic
+    // -----------------------
+    private void crossFadeTo(@NonNull Uri nextUri) {
+        // 다음 이미지를 back 뷰에 "미리 로드"하고, 로드가 끝나면 애니메이션 시작
+        preloadInto(back, nextUri, new Runnable() {
+            @Override public void run() {
+                if (!isAdded()) return;
+
+                // 동시에 out/in (진짜 크로스페이드)
+                back.setAlpha(0f);
+                back.bringToFront();
+
+                back.animate()
+                        .alpha(1f)
+                        .setDuration(fadeMs)
+                        .setInterpolator(new AccelerateDecelerateInterpolator())
+                        .withEndAction(new Runnable() {
+                            @Override public void run() {
+                                // 전환 완료 후 front/back 스왑
+                                ImageView tmp = front;
+                                front = back;
+                                back  = tmp;
+
+                                // back은 다음 전환을 위해 투명으로 재설정
+                                back.setAlpha(0f);
+
+                                // 인덱스 갱신 및 다음 예약
+                                index = uris.indexOf(nextUri);
+                                if (index < 0) index = 0; // 안전장치
+                                scheduleNext();
+                            }
+                        })
+                        .start();
+
+                front.animate()
+                        .alpha(0f)
+                        .setDuration(fadeMs)
+                        .setInterpolator(new AccelerateDecelerateInterpolator())
+                        .start();
+            }
+        });
     }
 
     private void scheduleNext() {
-        if (advanceTask != null) handler.removeCallbacks(advanceTask);
-        advanceTask = () -> {
-            if (!isAdded() || images.isEmpty()) return;
-
-            final int nextIndex = (index + 1) % images.size();
-            final ImageView cur = showingA ? imgA : imgB;
-            final ImageView next = showingA ? imgB : imgA;
-
-            // 다음 장을 '보이지 않는 뷰'에 미리 로드
-            pendingTarget = loadInto(next, images.get(nextIndex), () -> {
-                // 로드가 끝난 시점에만 크로스페이드 → 깜빡임/검은 화면 방지
-                crossfade(cur, next);
-                index = nextIndex;
-                showingA = !showingA;
-
-                // 마지막 이미지 캐시(재진입 시 즉시 표시)
-                Drawable d = next.getDrawable();
-                sLastDrawableRef = d != null ? new WeakReference<>(d) : null;
-
-                // 다음 스케줄
-                scheduleNext();
-            });
-        };
-        handler.postDelayed(advanceTask, showMs);
+        handler.removeCallbacks(nextTick);
+        handler.postDelayed(nextTick, showMs);
     }
 
-    /**
-     * 이미지를 target ImageView에 선로딩. 로드 완료 시 onReady 콜백.
-     */
-    private CustomTarget<Drawable> loadInto(@NonNull ImageView target, @NonNull Uri uri, @Nullable Runnable onReady) {
-        // 로딩 중에도 현재 이미지는 그대로 보이므로 내부 애니메이션은 끄고(dontAnimate)
-        // 빠르게 저해상도 썸네일을 먼저 붙여 체감속도 향상(thumbnail)
-        CustomTarget<Drawable> t = new CustomTarget<Drawable>() {
-            @Override public void onResourceReady(@NonNull Drawable resource, @Nullable Transition<? super Drawable> transition) {
-                target.setImageDrawable(resource);
-                if (onReady != null) onReady.run();
-            }
-            @Override public void onLoadCleared(@Nullable Drawable placeholder) { /* no-op */ }
-        };
-
+    private void preloadInto(@NonNull ImageView target, @NonNull Uri uri, @Nullable Runnable onReady) {
+        if (!isAdded()) return;
         Glide.with(this)
                 .load(uri)
                 .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
-                .priority(Priority.IMMEDIATE)
-                .dontAnimate()
-                .thumbnail(0.25f)
-                .into(t);
-
-        return t;
+                .dontAnimate() // 애니메이션은 우리가 직접 한다
+                .listener(new RequestListener<Drawable>() {
+                    @Override
+                    public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> t, boolean first) {
+                        if (onReady != null) onReady.run(); // 실패해도 다음으로 넘어가도록
+                        return false; // 에러 플레이스홀더 등 기본 동작 유지 X (없음)
+                    }
+                    @Override
+                    public boolean onResourceReady(Drawable res, Object model, Target<Drawable> t, DataSource ds, boolean first) {
+                        if (onReady != null) onReady.run();
+                        return false; // Glide가 target에 set 하는 기본 동작 수행
+                    }
+                })
+                .into(target);
     }
 
-    /**
-     * 현재 뷰(cur) 위로 다음 뷰(next)를 페이드인. Glide 애니메이션은 쓰지 않고
-     * 자체 alpha 애니메이션으로만 처리하여 깜빡임 없이 전환.
-     */
-    private void crossfade(@NonNull ImageView cur, @NonNull ImageView next) {
-        if (fadeMs <= 0) {
-            // 즉시 전환
-            cur.setVisibility(View.INVISIBLE);
-            next.setAlpha(1f);
-            next.setVisibility(View.VISIBLE);
-            return;
+    // -----------------------
+    // Config / Data loading
+    // -----------------------
+    private void loadConfig(Context ctx) {
+        SharedPreferences p = prefs(ctx);
+        int  showSec = p.getInt(KEY_SHOW_SEC, DEF_SHOW_SEC);
+        float fadeSec = p.getFloat(KEY_FADE_SEC, DEF_FADE_SEC);
+        shuffle = p.getBoolean(KEY_SHUFFLE, false);
+
+        showMs = Math.max(200, showSec * 1000);
+        fadeMs = Math.max(0, Math.round(fadeSec * 1000f));
+    }
+
+    private void loadImages(Context ctx) {
+        uris.clear();
+
+        // 1) AlbumStore.getImages(Context)를 우선 시도(반환 타입이 Uri/String 어느 쪽이든 흡수)
+        try {
+            List<?> list = AlbumStore.getImages(ctx); // List<Uri> 또는 List<String> 가정
+            if (list != null) {
+                for (Object o : list) {
+                    if (o instanceof Uri) {
+                        uris.add((Uri) o);
+                    } else if (o instanceof String) {
+                        try { uris.add(Uri.parse((String) o)); } catch (Throwable ignore) {}
+                    }
+                }
+            }
+        } catch (Throwable ignore) { /* 없음 또는 런타임 이슈면 패스 */ }
+
+        // 2) 비어 있으면 prefs CSV 로드
+        if (uris.isEmpty()) {
+            String csv = prefs(ctx).getString(KEY_IMAGES, "");
+            if (csv != null && !csv.isEmpty()) {
+                String[] parts = csv.split("\\|\\|");
+                for (String s : parts) {
+                    if (!s.isEmpty()) {
+                        try { uris.add(Uri.parse(s)); } catch (Throwable ignore) {}
+                    }
+                }
+            }
         }
 
-        next.setAlpha(0f);
-        next.setVisibility(View.VISIBLE);
+        // 3) 셔플이면 순서 섞기
+        if (shuffle && uris.size() > 1) {
+            long seed = System.currentTimeMillis();
+            Collections.shuffle(uris, new Random(seed));
+        }
+    }
 
-        next.animate().alpha(1f).setDuration(fadeMs).start();
-        cur.animate().alpha(0f).setDuration(fadeMs).withEndAction(() -> {
-            cur.setVisibility(View.INVISIBLE);
-            cur.setAlpha(1f); // 다음 전환 대비 원복
-        }).start();
+    private SharedPreferences prefs(Context c) {
+        return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 }
