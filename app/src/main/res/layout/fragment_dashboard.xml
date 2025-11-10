@@ -1,5 +1,406 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/dashboard_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/surface"/><!-- 흰 화면 -->
+    android:background="@android:color/white">
+
+    <!-- 메인 콘텐츠 -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/main_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="16dp">
+
+        <!-- 상단 타이틀 -->
+        <TextView
+            android:id="@+id/txt_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Smart Home Dashboard"
+            android:textStyle="bold"
+            android:textSize="20sp"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
+
+        <!-- 우측 상단 리프레시 -->
+        <ImageButton
+            android:id="@+id/btn_refresh_all"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_refresh_24"
+            android:contentDescription="refresh"
+            app:tint="@android:color/black"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- 스마트 플러그 카드 -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/txt_title">
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_plug"
+                android:layout_width="220dp"
+                android:layout_height="250dp"
+                android:layout_marginTop="12dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="4dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:id="@+id/txt_plug_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Aqara Smart Plug"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/txt_plug_state"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="상태: -"
+                        android:textSize="14sp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="32dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btn_plug_on"
+                            android:layout_width="0dp"
+                            android:layout_height="40dp"
+                            android:layout_weight="1"
+                            android:backgroundTint="#5746C6"
+                            android:text="켜기"
+                            android:textAllCaps="false"
+                            android:textColor="@android:color/white" />
+
+                        <View
+                            android:layout_width="12dp"
+                            android:layout_height="0dp" />
+
+                        <Button
+                            android:id="@+id/btn_plug_off"
+                            android:layout_width="0dp"
+                            android:layout_height="40dp"
+                            android:layout_weight="1"
+                            android:backgroundTint="#5746C6"
+                            android:text="끄기"
+                            android:textAllCaps="false"
+                            android:textColor="@android:color/white" />
+                    </LinearLayout>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_light"
+                android:layout_width="360dp"
+                android:layout_height="250dp"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="12dp"
+                android:layout_marginEnd="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="4dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:id="@+id/txt_light_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Smart Multicolor Bulb"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/txt_light_state"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="상태: -"
+                        android:textSize="14sp" />
+
+                    <Button
+                        android:id="@+id/btn_light_color"
+                        android:layout_width="120dp"
+                        android:layout_height="40dp"
+                        android:layout_marginTop="16dp"
+                        android:backgroundTint="#5746C6"
+                        android:text="색상"
+                        android:textAllCaps="false"
+                        android:textColor="@android:color/white" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:text="밝기 (0~100%)"
+                        android:textSize="14sp" />
+
+                    <SeekBar
+                        android:id="@+id/seek_brightness_pct"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:max="100" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btn_light_on"
+                            android:layout_width="0dp"
+                            android:layout_height="40dp"
+                            android:layout_weight="1"
+                            android:backgroundTint="#5746C6"
+                            android:text="켜기"
+                            android:textAllCaps="false"
+                            android:textColor="@android:color/white" />
+
+                        <View
+                            android:layout_width="12dp"
+                            android:layout_height="0dp" />
+
+                        <Button
+                            android:id="@+id/btn_light_off"
+                            android:layout_width="0dp"
+                            android:layout_height="40dp"
+                            android:layout_weight="1"
+                            android:backgroundTint="#5746C6"
+                            android:text="끄기"
+                            android:textAllCaps="false"
+                            android:textColor="@android:color/white" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_air"
+                android:layout_width="220dp"
+                android:layout_height="250dp"
+                android:layout_marginTop="12dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="4dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:id="@+id/txt_air_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Air Quality"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/txt_air_state"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="상태: -"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/txt_air_aqi"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="AQI: -" />
+
+                    <TextView
+                        android:id="@+id/txt_air_temp"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Temp: -" />
+
+                    <TextView
+                        android:id="@+id/txt_air_hum"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Humidity: -" />
+
+                    <TextView
+                        android:id="@+id/txt_air_pm25"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="PM2.5: -" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
+
+        <!-- 전구 카드 (팝업 여는 버튼만 있음) -->
+
+        <!-- 공기질 카드 -->
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- 색상 팝업 오버레이: 위에 깔려서 뒤에 클릭 막음 -->
+    <FrameLayout
+        android:id="@+id/color_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#80000000"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone"
+        android:foregroundGravity="center">
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/color_popup"
+            android:layout_width="420dp"
+            android:layout_height="540dp"
+            android:layout_gravity="center"
+            android:layout_margin="16dp"
+            app:cardCornerRadius="20dp"
+            app:cardElevation="8dp">
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:padding="16dp">
+
+                <ImageButton
+                    android:id="@+id/btn_color_close"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_alignParentEnd="true"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_close_24"
+                    android:contentDescription="close" />
+
+                <TextView
+                    android:id="@+id/txt_color_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="색상 선택"
+                    android:textStyle="bold"
+                    android:textSize="16sp"
+                    android:layout_alignParentStart="true"
+                    android:layout_toStartOf="@id/btn_color_close"
+                    android:layout_marginEnd="8dp" />
+
+                <!-- 원형 컬러 휠 -->
+                <com.neovision.onframe.ColorWheelView
+                    android:id="@+id/color_wheel"
+                    android:layout_width="260dp"
+                    android:layout_height="260dp"
+                    android:layout_below="@id/txt_color_title"
+                    android:layout_centerHorizontal="true"
+                    android:layout_marginTop="16dp" />
+
+                <!-- 색 프리셋 원 -->
+                <LinearLayout
+                    android:id="@+id/layout_color_presets"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_below="@id/color_wheel"
+                    android:layout_marginTop="16dp"
+                    android:gravity="center_horizontal"
+                    android:orientation="horizontal">
+
+                    <View
+                        android:id="@+id/preset_red"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_margin="6dp"
+                        android:background="@drawable/bg_color_round_red" />
+
+                    <View
+                        android:id="@+id/preset_green"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_margin="6dp"
+                        android:background="@drawable/bg_color_round_green" />
+
+                    <View
+                        android:id="@+id/preset_blue"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_margin="6dp"
+                        android:background="@drawable/bg_color_round_blue" />
+
+                    <View
+                        android:id="@+id/preset_white"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_margin="6dp"
+                        android:background="@drawable/bg_color_round_white" />
+
+                    <View
+                        android:id="@+id/preset_yellow"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_margin="6dp"
+                        android:background="@drawable/bg_color_round_yellow" />
+
+                </LinearLayout>
+
+                <!-- 색온도 버튼 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_below="@id/layout_color_presets"
+                    android:layout_marginTop="20dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btn_popup_temp_3000"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:text="3000K"
+                        android:textAllCaps="false"
+                        android:backgroundTint="#5746C6"
+                        android:textColor="@android:color/white" />
+
+                    <View
+                        android:layout_width="12dp"
+                        android:layout_height="0dp" />
+
+                    <Button
+                        android:id="@+id/btn_popup_temp_6500"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:text="6500K"
+                        android:textAllCaps="false"
+                        android:backgroundTint="#5746C6"
+                        android:textColor="@android:color/white" />
+                </LinearLayout>
+
+            </RelativeLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+    </FrameLayout>
+
+</FrameLayout>

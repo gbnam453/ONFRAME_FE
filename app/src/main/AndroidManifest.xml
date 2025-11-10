@@ -1,22 +1,30 @@
-<manifest package="com.neovision.onframe"
-    xmlns:android="http://schemas.android.com/apk/res/android">
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.neovision.onframe">
+
+    <!-- HTTP 요청하려면 필요 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 꼭 필요한 건 아니지만, 상태 보고 싶으면 이거도 가능
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    -->
 
     <application
         android:label="OnFrame"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:theme="@style/Theme.OnFrame">
+        android:theme="@style/Theme.OnFrame"
+        android:usesCleartextTraffic="true">
 
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:screenOrientation="landscape"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|layoutDirection|uiMode">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-        </activity>
+    <activity
+        android:name=".MainActivity"
+        android:exported="true"
+        android:screenOrientation="landscape"
+        android:configChanges="keyboard|keyboardHidden|orientation|screenSize|layoutDirection|uiMode">
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
+    </activity>
 
-    </application>
-</manifest>
+</application>
+    </manifest>
