@@ -1,16 +1,17 @@
+// AlbumFragment.java
 package com.neovision.onframe;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.LayoutInflater;
-import android.view.View;
-import android.view.ViewGroup;
-import android.view.animation.AccelerateDecelerateInterpolator;
+import android.view.*;
+import android.view.animation.LinearInterpolator;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
@@ -19,220 +20,282 @@ import androidx.fragment.app.Fragment;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.DataSource;
-import com.bumptech.glide.load.engine.DiskCacheStrategy;
-import com.bumptech.glide.load.engine.GlideException;
+import com.bumptech.glide.load.engine.GlideException; // ★ 추가된 임포트
 import com.bumptech.glide.request.RequestListener;
 import com.bumptech.glide.request.target.Target;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Random;
 
 /**
- * 앨범 화면: 전체화면 이미지 슬라이드 + '진짜' 크로스페이드
- * - 두 개의 겹친 ImageView 사이를 교대로 페이드 (동시에 out/in)
- * - 다음 이미지가 "로드 완료"된 뒤에만 전환 시작 → 검정 화면/깜빡임 방지
- * - centerCrop 으로 화면 가득 표시
+ * 앨범 화면(슬라이드쇼)
+ * - 두 개의 ImageView를 겹쳐서 '우리가 직접' 크로스페이드
+ * - 다음 이미지는 미리 로드가 완료된 때에만 페이드 시작 → 깜빡임/블랙 방지
+ * - 매 사이클마다 설정값(표시시간/페이드/셔플)을 다시 읽어 즉시 반영
+ * - 항상 CENTER_CROP 풀스크린
  */
 public class AlbumFragment extends Fragment {
 
-    // 설정 키 (AlbumSettingsFragment와 동일 키 사용)
-    private static final String PREFS = "album_prefs";
-    private static final String KEY_IMAGES   = "album_images";        // "uri||uri||..."
-    private static final String KEY_SHOW_SEC = "album_show_seconds";  // int(초)
-    private static final String KEY_FADE_SEC = "album_fade_seconds";  // float(초)
-    private static final String KEY_SHUFFLE  = "album_shuffle";       // boolean
+    // === Prefs fallback (AlbumStore 없을 때) ===
+    private static final String PREFS      = "album_prefs";
+    private static final String KEY_IMAGES = "album_images_csv"; // "uri||uri||..."
+    private static final String KEY_SHOW   = "album_show_sec";   // int seconds
+    private static final String KEY_FADE   = "album_fade_sec";   // float seconds
+    private static final String KEY_SHUFFLE= "album_shuffle";    // boolean
 
-    private static final int    DEF_SHOW_SEC = 5;      // 기본 한장 표시 5초
-    private static final float  DEF_FADE_SEC = 1.0f;   // 기본 페이드 1.0초
+    // 뷰(더블 버퍼)
+    private FrameLayout root;
+    private ImageView ivA, ivB;
+    private boolean showingA = true;
 
-    private ImageView imgA, imgB;     // 두 장 레이어
-    private ImageView front, back;     // 현재/다음 대상
+    // 상태
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private final ArrayList<Uri> images = new ArrayList<>();
+    private int index = 0;
+    private boolean running = false;
 
-    private final List<Uri> uris = new ArrayList<>();
-    private int index = -1;
-    private boolean shuffle = false;
+    // 로딩 상태
+    private boolean nextReady = false;
 
-    private int showMs;   // 표시 시간(ms)
-    private int fadeMs;   // 크로스페이드 시간(ms)
-
-    private final Runnable nextTick = new Runnable() {
+    // 스케줄용 runnable
+    private final Runnable advanceRunnable = new Runnable() {
         @Override public void run() {
-            if (!isAdded() || uris.isEmpty()) return;
-            int next = (index + 1) % uris.size();
-            crossFadeTo(uris.get(next));
+            if (!running || images.isEmpty() || !isAdded()) return;
+            int showMs = Math.max(200, loadShowMs(requireContext()));
+            int fadeMs = Math.max(0,   loadFadeMs(requireContext()));
+
+            if (nextReady) {
+                crossfadeToNext(fadeMs);
+            } else {
+                handler.postDelayed(this, 50);
+            }
         }
     };
 
-    @Nullable
-    @Override
+    @Nullable @Override
     public View onCreateView(@NonNull LayoutInflater inf, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        View v = inf.inflate(R.layout.fragment_album, container, false);
+        root = new FrameLayout(requireContext());
+        root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        root.setBackgroundColor(Color.BLACK);
 
-        imgA = v.findViewById(R.id.imageA);
-        imgB = v.findViewById(R.id.imageB);
+        ivA = createImageView();
+        ivB = createImageView();
 
-        // 시작 상태: 둘 다 투명. 첫 로드가 끝나면 보이게 만든다.
-        imgA.setAlpha(0f);
-        imgB.setAlpha(0f);
-        imgA.setVisibility(View.VISIBLE);
-        imgB.setVisibility(View.VISIBLE);
+        root.addView(ivA);
+        root.addView(ivB);
 
-        front = imgA;
-        back  = imgB;
-
-        loadConfig(v.getContext());
-        loadImages(v.getContext());
-
-        if (!uris.isEmpty()) {
-            // 첫 장 '로드 완료' 후 바로 표시(페이드 없이)
-            index = 0;
-            preloadInto(front, uris.get(index), new Runnable() {
-                @Override public void run() {
-                    if (!isAdded()) return;
-                    front.setAlpha(1f);   // 첫 장은 바로 보이게
-                    scheduleNext();
-                }
-            });
-        }
-
-        return v;
+        ivA.setAlpha(0f);
+        ivB.setAlpha(0f);
+        return root;
     }
 
-    @Override
-    public void onDestroyView() {
-        super.onDestroyView();
+    private ImageView createImageView() {
+        ImageView iv = new ImageView(requireContext());
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+        );
+        iv.setLayoutParams(lp);
+        iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        return iv;
+    }
+
+    @Override public void onResume() {
+        super.onResume();
+        startSlideShow();
+    }
+
+    @Override public void onPause() {
+        super.onPause();
+        stopSlideShow();
+    }
+
+    private void startSlideShow() {
+        if (running) return;
+        images.clear();
+        images.addAll(loadImagesCompat(requireContext()));
+        if (images.isEmpty()) return;
+
+        running = true;
+        index = 0;
+        showingA = true;
+        nextReady = false;
+
+        Glide.with(this).clear(ivA);
+        Glide.with(this).clear(ivB);
+        ivA.setAlpha(0f);
+        ivB.setAlpha(0f);
+
+        preloadNext(index);
+    }
+
+    private void stopSlideShow() {
+        running = false;
         handler.removeCallbacksAndMessages(null);
-        // Glide 요청 정리
-        if (getContext() != null) {
-            Glide.with(getContext()).clear(imgA);
-            Glide.with(getContext()).clear(imgB);
+        if (isAdded()) {
+            Glide.with(this).clear(ivA);
+            Glide.with(this).clear(ivB);
         }
+        ivA.animate().cancel();
+        ivB.animate().cancel();
     }
 
-    // -----------------------
-    // Core: Cross-fade logic
-    // -----------------------
-    private void crossFadeTo(@NonNull Uri nextUri) {
-        // 다음 이미지를 back 뷰에 "미리 로드"하고, 로드가 끝나면 애니메이션 시작
-        preloadInto(back, nextUri, new Runnable() {
-            @Override public void run() {
-                if (!isAdded()) return;
+    private void preloadNext(int curIndex) {
+        if (!running || images.isEmpty()) return;
 
-                // 동시에 out/in (진짜 크로스페이드)
-                back.setAlpha(0f);
-                back.bringToFront();
+        final Uri cur = images.get(curIndex);
+        final ImageView curView   = showingA ? ivA : ivB;
+        final ImageView hiddenView= showingA ? ivB : ivA;
 
-                back.animate()
-                        .alpha(1f)
-                        .setDuration(fadeMs)
-                        .setInterpolator(new AccelerateDecelerateInterpolator())
-                        .withEndAction(new Runnable() {
-                            @Override public void run() {
-                                // 전환 완료 후 front/back 스왑
-                                ImageView tmp = front;
-                                front = back;
-                                back  = tmp;
+        nextReady = false;
 
-                                // back은 다음 전환을 위해 투명으로 재설정
-                                back.setAlpha(0f);
-
-                                // 인덱스 갱신 및 다음 예약
-                                index = uris.indexOf(nextUri);
-                                if (index < 0) index = 0; // 안전장치
-                                scheduleNext();
-                            }
-                        })
-                        .start();
-
-                front.animate()
-                        .alpha(0f)
-                        .setDuration(fadeMs)
-                        .setInterpolator(new AccelerateDecelerateInterpolator())
-                        .start();
-            }
-        });
-    }
-
-    private void scheduleNext() {
-        handler.removeCallbacks(nextTick);
-        handler.postDelayed(nextTick, showMs);
-    }
-
-    private void preloadInto(@NonNull ImageView target, @NonNull Uri uri, @Nullable Runnable onReady) {
-        if (!isAdded()) return;
         Glide.with(this)
-                .load(uri)
-                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
-                .dontAnimate() // 애니메이션은 우리가 직접 한다
+                .load(cur)
+                .thumbnail(0.25f)
+                .dontAnimate()
+                .centerCrop()
                 .listener(new RequestListener<Drawable>() {
-                    @Override
-                    public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> t, boolean first) {
-                        if (onReady != null) onReady.run(); // 실패해도 다음으로 넘어가도록
-                        return false; // 에러 플레이스홀더 등 기본 동작 유지 X (없음)
+                    @Override public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
+                        curView.setAlpha(1f);
+                        scheduleNextCycle();
+                        return false;
                     }
-                    @Override
-                    public boolean onResourceReady(Drawable res, Object model, Target<Drawable> t, DataSource ds, boolean first) {
-                        if (onReady != null) onReady.run();
-                        return false; // Glide가 target에 set 하는 기본 동작 수행
+                    @Override public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
+                        curView.setAlpha(1f);
+                        scheduleNextCycle();
+                        return false;
                     }
                 })
-                .into(target);
+                .into(curView);
+
+        int nxt = (curIndex + 1) % images.size();
+        final Uri next = images.get(nxt);
+
+        Glide.with(this)
+                .load(next)
+                .dontAnimate()
+                .centerCrop()
+                .listener(new RequestListener<Drawable>() {
+                    @Override public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
+                        nextReady = true;
+                        return false;
+                    }
+                    @Override public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
+                        nextReady = true;
+                        return false;
+                    }
+                })
+                .into(hiddenView);
     }
 
-    // -----------------------
-    // Config / Data loading
-    // -----------------------
-    private void loadConfig(Context ctx) {
-        SharedPreferences p = prefs(ctx);
-        int  showSec = p.getInt(KEY_SHOW_SEC, DEF_SHOW_SEC);
-        float fadeSec = p.getFloat(KEY_FADE_SEC, DEF_FADE_SEC);
-        shuffle = p.getBoolean(KEY_SHUFFLE, false);
-
-        showMs = Math.max(200, showSec * 1000);
-        fadeMs = Math.max(0, Math.round(fadeSec * 1000f));
+    private void scheduleNextCycle() {
+        if (!running) return;
+        int showMs = Math.max(200, loadShowMs(requireContext()));
+        handler.removeCallbacks(advanceRunnable);
+        handler.postDelayed(advanceRunnable, showMs);
     }
 
-    private void loadImages(Context ctx) {
-        uris.clear();
+    private void crossfadeToNext(int fadeMs) {
+        if (!running || images.isEmpty()) return;
 
-        // 1) AlbumStore.getImages(Context)를 우선 시도(반환 타입이 Uri/String 어느 쪽이든 흡수)
+        final ImageView curView  = showingA ? ivA : ivB;
+        final ImageView nextView = showingA ? ivB : ivA;
+
+        if (fadeMs <= 0) {
+            curView.setAlpha(0f);
+            nextView.setAlpha(1f);
+            stepIndexAndPreload();
+            return;
+        }
+
+        curView.animate().cancel();
+        nextView.animate().cancel();
+
+        nextView.setAlpha(0f);
+        nextView.animate()
+                .alpha(1f)
+                .setDuration(fadeMs)
+                .setInterpolator(new LinearInterpolator())
+                .start();
+
+        curView.animate()
+                .alpha(0f)
+                .setDuration(fadeMs)
+                .setInterpolator(new LinearInterpolator())
+                .withEndAction(this::stepIndexAndPreload)
+                .start();
+    }
+
+    private void stepIndexAndPreload() {
+        boolean shuffle = loadShuffle(requireContext());
+        if (shuffle && images.size() > 2) {
+            List<Uri> pool = new ArrayList<>(images);
+            Uri cur = images.get(index);
+            pool.remove(cur);
+            int nextIdx = (int) (Math.random() * pool.size());
+            Uri next = pool.get(nextIdx);
+            index = images.indexOf(next);
+            if (index < 0) index = (images.indexOf(cur) + 1) % images.size();
+        } else {
+            index = (index + 1) % images.size();
+        }
+
+        showingA = !showingA;
+        nextReady = false;
+
+        preloadNext(index);
+    }
+
+    private int loadShowMs(Context ctx) {
+        int sec = 5;
+        try { sec = AlbumStore.getShowSeconds(ctx); }
+        catch (Throwable ignore) {
+            sec = prefs(ctx).getInt(KEY_SHOW, 5);
+        }
+        if (sec < 1) sec = 1;
+        if (sec > 60) sec = 60;
+        return sec * 1000;
+    }
+
+    private int loadFadeMs(Context ctx) {
+        float sec = 1.0f;
+        try { sec = AlbumStore.getFadeSeconds(ctx); }
+        catch (Throwable ignore) {
+            sec = prefs(ctx).getFloat(KEY_FADE, 1.0f);
+        }
+        if (sec < 0f) sec = 0f;
+        if (sec > 10f) sec = 10f;
+        return Math.round(sec * 1000f);
+    }
+
+    private boolean loadShuffle(Context ctx) {
+        try { return AlbumStore.isShuffle(ctx); }
+        catch (Throwable ignore) {
+            return prefs(ctx).getBoolean(KEY_SHUFFLE, false);
+        }
+    }
+
+    private List<Uri> loadImagesCompat(Context ctx) {
+        ArrayList<Uri> out = new ArrayList<>();
         try {
-            List<?> list = AlbumStore.getImages(ctx); // List<Uri> 또는 List<String> 가정
-            if (list != null) {
-                for (Object o : list) {
-                    if (o instanceof Uri) {
-                        uris.add((Uri) o);
-                    } else if (o instanceof String) {
-                        try { uris.add(Uri.parse((String) o)); } catch (Throwable ignore) {}
-                    }
+            List<?> raw = AlbumStore.getImages(ctx);
+            if (raw != null) {
+                for (Object o : raw) {
+                    if (o instanceof Uri) out.add((Uri) o);
+                    else if (o instanceof String) try { out.add(Uri.parse((String) o)); } catch (Throwable ignore) {}
                 }
             }
-        } catch (Throwable ignore) { /* 없음 또는 런타임 이슈면 패스 */ }
+        } catch (Throwable ignore) { }
+        if (!out.isEmpty()) return out;
 
-        // 2) 비어 있으면 prefs CSV 로드
-        if (uris.isEmpty()) {
-            String csv = prefs(ctx).getString(KEY_IMAGES, "");
-            if (csv != null && !csv.isEmpty()) {
-                String[] parts = csv.split("\\|\\|");
-                for (String s : parts) {
-                    if (!s.isEmpty()) {
-                        try { uris.add(Uri.parse(s)); } catch (Throwable ignore) {}
-                    }
-                }
-            }
+        String csv = prefs(ctx).getString(KEY_IMAGES, "");
+        if (csv != null && !csv.isEmpty()) {
+            String[] parts = csv.split("\\|\\|");
+            for (String s : parts) if (!s.isEmpty()) try { out.add(Uri.parse(s)); } catch (Throwable ignore) {}
         }
-
-        // 3) 셔플이면 순서 섞기
-        if (shuffle && uris.size() > 1) {
-            long seed = System.currentTimeMillis();
-            Collections.shuffle(uris, new Random(seed));
-        }
+        return out;
     }
 
-    private SharedPreferences prefs(Context c) {
-        return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    private SharedPreferences prefs(Context ctx) {
+        return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 }
