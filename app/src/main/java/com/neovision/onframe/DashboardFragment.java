@@ -35,7 +35,7 @@ import java.net.URL;
 public class DashboardFragment extends Fragment {
 
     // 엔드포인트 베이스
-    private static final String BASE = "http://192.168.10.100:8080";
+    private static final String BASE = "http://192.168.240.1:8080";
 
     // GET
     private static final String EP_PLUG_STATE  = BASE + "/api/ha/states/switch.aqara_smart_plug";
